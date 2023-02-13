@@ -21,7 +21,6 @@ def show_detected_face(img):
         for (ex, ey, ew, eh) in eyes:
             cv2.rectangle(face, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
             print(ex, ey, ew, eh)
-            print(type(img))
 
 
 def face_detect_from_webcam():
