@@ -17,7 +17,7 @@ engine = create_engine('sqlite:///project.db')
 
 # Session作成
 Session = sessionmaker(bind=engine)
-session = Session()
+db_session = Session()
 
 # Base
 Base = declarative_base()
@@ -66,15 +66,15 @@ def login_required(f):
 
 @app.route('/')
 @login_required
-def hello_world():  # put application's code here
-    return 'Hello World!'
+def index():  # put application's code here
+    return render_template("index.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
     # forget any user_id
-    logout_user()
+    session.clear()
 
     # POST
     if request.method == "POST":
@@ -90,7 +90,7 @@ def login():
             return apology()
 
         # ユーザー名をデータベースに問い合わせる
-        rows = session.query(User.id, User.name, User.password).filter_by(name=username).all()
+        rows = db_session.query(User.id, User.name, User.password).filter_by(name=username).all()
         # rows = db.execute("SELECT * FROM users WHERE username = ?", username)
 
         # ユーザー名が存在し、パスワードが正しいことを確認する
@@ -113,7 +113,6 @@ def logout():
 
     # Forget any user_id
     session.clear()
-    # logout_user()
 
     # ログイン画面へリダイレクト
     return render_template("login.html")
@@ -121,6 +120,8 @@ def logout():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+
+    session.clear()
 
     # POST
     if request.method == "POST":
@@ -139,20 +140,19 @@ def register():
 
         # usernameがすでに使われていないか
         name = request.form.get("username")
-        duplication = (session.query(User.name).filter_by(name=name).all())[0][0]
+        duplication = db_session.query(User.name).filter_by(name=name).all()
 
-        # duplication = (db.execute("SELECT username from users where username = ? LIMIT 1", name))
         if len(duplication) > 0:
             return apology()
 
         # 入力されたものをdbに入れる
         user = User(name=name, password=generate_password_hash(request.form.get("password")))
-        session.add(user)
-        session.commit()
+        db_session.add(user)
+        db_session.commit()
         # db.execute("INSERT INTO users (username, hash) VALUES (?, ?)",name, generate_password_hash(request.form.get("password")))
 
         # ログインしているユーザーを記憶する
-        rows = session.query(User.id, User.name, User.password).filter_by(name=name).all()
+        rows = db_session.query(User.id, User.name, User.password).filter_by(name=name).all()
         # rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
         session["user_id"] = rows[0][0]
 
