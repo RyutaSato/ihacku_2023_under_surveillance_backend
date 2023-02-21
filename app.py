@@ -1,10 +1,9 @@
 from flask import Flask, redirect, render_template, request, session
-from flask_login import LoginManager, logout_user
+from flask_login import LoginManager
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-import os
 from functools import wraps
 
 
@@ -13,7 +12,7 @@ app = Flask(__name__)
 app.secret_key = "user"
 
 # DB接続
-engine = create_engine('sqlite:///project.db')
+engine = create_engine('sqlite:///project.db', connect_args={'check_same_thread': False})
 
 # Session作成
 Session = sessionmaker(bind=engine)
@@ -114,8 +113,6 @@ def logout():
 
     # Forget any user_id
     session.clear()
-
-    db_session.close()
 
     # ログイン画面へリダイレクト
     return render_template("login.html")
