@@ -79,6 +79,8 @@ def login():
     # POST
     if request.method == "POST":
 
+        session.clear()
+
         username = request.form.get("username")
 
         # ユーザー名が送信されたことを確認
@@ -91,7 +93,6 @@ def login():
 
         # ユーザー名をデータベースに問い合わせる
         rows = db_session.query(User.id, User.name, User.password).filter_by(name=username).all()
-        # rows = db.execute("SELECT * FROM users WHERE username = ?", username)
 
         # ユーザー名が存在し、パスワードが正しいことを確認する
         if len(rows) != 1 or not check_password_hash(rows[0][2], request.form.get("password")):
@@ -113,6 +114,8 @@ def logout():
 
     # Forget any user_id
     session.clear()
+
+    db_session.close()
 
     # ログイン画面へリダイレクト
     return render_template("login.html")
@@ -167,5 +170,5 @@ if __name__ == '__main__':
     app.run()
     
     
-def apology():  #TODO:
+def apology(message):  #TODO:
     return "<a>apology</a>"
