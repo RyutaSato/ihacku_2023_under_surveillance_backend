@@ -1,57 +1,71 @@
 from flask import Flask, redirect, render_template, request, session
+from flask_login import LoginManager, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from cs50 import SQL    # TODO: cs50の部分書き換える
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-import pandas as pd
 import os
+from functools import wraps
 
 
 app = Flask(__name__)
 
-db = SQL("sqlite:///project.db")    # TODO: cs50書き換え
+app.secret_key = "user"
 
-""" 記事参考
-# Engine作成
-Engine = create_engine(
-    "postgresql://postgres:postgres@sqlalchemy-db:5432/sqlalchemy",
-    encoding="utf-8",
-    echo=False
-)
+# DB接続
+engine = create_engine('sqlite:///project.db')
 
 # Session作成
-session = sessionmaker(
-    autocommit=False,
-    
-)
-"""
+Session = sessionmaker(bind=engine)
+session = Session()
 
-""" youtube参考
-database_file = os.path.join(os.path.abspath(os.getcwd()), 'project.db')
-
-# engineをセット
-engine = create_engine('sqlite:///' + database_file,
-                       convert_unicode=True, echo=True)
-# session: dbとのつながりを確立してから切断するまでの一連の流れ。dbとpyを接続する
-db_session = scoped_session(
-    sessionmaker(
-        autocommit=False,
-        autoflush=False
-        bind=engine
-    )
-)
-
-# ベースとなるDBを作成（動画12:45）
+# Base
 Base = declarative_base()
-Base.query = db_session.query_property()
 
-# データベースを初期化する。matadata: データベースの情報を保持しているオブジェクト。
-Base.metadata.create_all(bind=engine)
-"""
+# テーブルクラスを定義
+class User(Base):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=False)
+
+class Record(Base):
+    __tablename__ = 'record'
+    id = Column( Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    started_at = Column(String(50), nullable=False)
+    ended_at = Column(String(50), nullable=False)
+
+
+Base.metadata.create_all(engine)
+
+# flask_loginの初期化
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User(user_id)
+
+# @login_requiredデコレータの実装
+def login_required(f):
+    """
+    Decorate routes to require login.
+
+    https://flask.palletsprojects.com/en/1.1.x/patterns/viewdecorators/
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if session.get("user_id") is None:
+            return redirect("/login")
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 @app.route('/')
+@login_required
 def hello_world():  # put application's code here
     return 'Hello World!'
 
@@ -60,7 +74,7 @@ def hello_world():  # put application's code here
 def login():
 
     # forget any user_id
-    session.clear()
+    logout_user()
 
     # POST
     if request.method == "POST":
@@ -76,14 +90,15 @@ def login():
             return apology()
 
         # ユーザー名をデータベースに問い合わせる
-        rows = db.execute("SELECT * FROM users WHERE username = ?", username)
+        rows = session.query(User.id, User.name, User.password).filter_by(name=username).all()
+        # rows = db.execute("SELECT * FROM users WHERE username = ?", username)
 
         # ユーザー名が存在し、パスワードが正しいことを確認する
-        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
+        if len(rows) != 1 or not check_password_hash(rows[0][2], request.form.get("password")):
             return apology()
 
-        # ユーザーのログインを記録。sessionにユーザーのuser_idを格納
-        session["user_id"] = rows[0]["id"]
+        # ユーザーのログインを記録。sessionにユーザーのuser_idを入れる
+        session["user_id"] = rows[0][0]
 
         # homeページにリダイレクト
         return redirect("/")
@@ -98,9 +113,10 @@ def logout():
 
     # Forget any user_id
     session.clear()
+    # logout_user()
 
     # ログイン画面へリダイレクト
-    return redirect("/")
+    return render_template("login.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -123,19 +139,22 @@ def register():
 
         # usernameがすでに使われていないか
         name = request.form.get("username")
-        duplication = (db.execute(
-            "SELECT username from users where username = ? LIMIT 1", name))
+        duplication = (session.query(User.name).filter_by(name=name).all())[0][0]
+
+        # duplication = (db.execute("SELECT username from users where username = ? LIMIT 1", name))
         if len(duplication) > 0:
-            return apology("username is not available", 400)
+            return apology()
 
         # 入力されたものをdbに入れる
-        db.execute("INSERT INTO users (username, hash) VALUES (?, ?)",
-                   name, generate_password_hash(request.form.get("password")))
+        user = User(name=name, password=generate_password_hash(request.form.get("password")))
+        session.add(user)
+        session.commit()
+        # db.execute("INSERT INTO users (username, hash) VALUES (?, ?)",name, generate_password_hash(request.form.get("password")))
 
         # ログインしているユーザーを記憶する
-        rows = db.execute("SELECT * FROM users WHERE username = ?",
-                          request.form.get("username"))
-        session["user_id"] = rows[0]["id"]
+        rows = session.query(User.id, User.name, User.password).filter_by(name=name).all()
+        # rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
+        session["user_id"] = rows[0][0]
 
         # リダイレクト
         return redirect("/")
@@ -149,4 +168,4 @@ if __name__ == '__main__':
     
     
 def apology():  #TODO:
-    return
+    return "<a>apology</a>"
